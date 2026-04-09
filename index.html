@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="theme-color" content="#1a1a2e">
+  <title>語音筆記</title>
+  <link rel="manifest" href="./manifest.json">
+  <link rel="apple-touch-icon" href="./icon-192.png">
+  <link rel="stylesheet" href="./style.css">
+</head>
+<body>
+
+<!-- Toast -->
+<div id="toast" class="toast"></div>
+
+<!-- Page: Notes -->
+<div id="page-notes" class="page active">
+  <h1>語音筆記</h1>
+  <div class="record-area">
+    <button id="record-btn" class="record-btn">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/>
+        <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
+        <line x1="12" y1="19" x2="12" y2="23"/>
+        <line x1="8" y1="23" x2="16" y2="23"/>
+      </svg>
+      按住錄音
+    </button>
+    <div id="record-status" class="record-status"></div>
+  </div>
+  <div id="notes-list"></div>
+</div>
+
+<!-- Page: Summary -->
+<div id="page-summary" class="page">
+  <h1>AI 摘要</h1>
+  <div class="btn-row" style="margin-bottom: 16px;">
+    <button id="btn-generate-summary" class="btn btn-primary">產生今日摘要</button>
+    <button id="btn-send-email" class="btn btn-secondary">寄送週報</button>
+  </div>
+  <div id="summary-list"></div>
+</div>
+
+<!-- Page: Settings -->
+<div id="page-settings" class="page">
+  <h1>設定</h1>
+
+  <div id="scheduler-status" class="scheduler-status"></div>
+
+  <div class="setting-group">
+    <label for="input-api-key">Claude API Key</label>
+    <input id="input-api-key" type="password" placeholder="sk-ant-...">
+    <div class="hint">用於產生每日 AI 摘要。取得方式：console.anthropic.com</div>
+  </div>
+
+  <div class="setting-group">
+    <label for="input-email">Email 地址</label>
+    <input id="input-email" type="email" placeholder="you@example.com">
+    <div class="hint">每週一早上 8 點自動寄送週報到此信箱</div>
+
+    <label for="input-emailjs-service" style="margin-top:14px">EmailJS Service ID</label>
+    <input id="input-emailjs-service" type="text" placeholder="service_xxxxxx">
+
+    <label for="input-emailjs-template" style="margin-top:14px">EmailJS Template ID</label>
+    <input id="input-emailjs-template" type="text" placeholder="template_xxxxxx">
+
+    <label for="input-emailjs-public" style="margin-top:14px">EmailJS Public Key</label>
+    <input id="input-emailjs-public" type="text" placeholder="你的 Public Key">
+
+    <div class="hint" style="margin-top:10px">
+      免費註冊 emailjs.com，建立服務與模板後填入以上資訊。<br>
+      模板需包含變數：{{to_email}}、{{subject}}、{{message}}
+    </div>
+  </div>
+
+  <button id="btn-save-settings" class="btn btn-primary">儲存設定</button>
+</div>
+
+<!-- Bottom Nav -->
+<nav>
+  <button data-page="page-notes" class="active">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/>
+      <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
+    </svg>
+    錄音
+  </button>
+  <button data-page="page-summary">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <rect x="3" y="3" width="18" height="18" rx="2"/>
+      <line x1="7" y1="8" x2="17" y2="8"/>
+      <line x1="7" y1="12" x2="17" y2="12"/>
+      <line x1="7" y1="16" x2="13" y2="16"/>
+    </svg>
+    摘要
+  </button>
+  <button data-page="page-settings">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <circle cx="12" cy="12" r="3"/>
+      <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+    </svg>
+    設定
+  </button>
+</nav>
+
+<script type="module" src="./app.js"></script>
+</body>
+</html>
