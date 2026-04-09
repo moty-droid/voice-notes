@@ -3,11 +3,6 @@ import {
   saveSummary, getSummary, getSummariesByRange
 } from './db.js';
 
-// ── State ──
-let recognition = null;
-let isRecording = false;
-let currentTranscript = '';
-
 // ── DOM ──
 const $ = s => document.querySelector(s);
 const $$ = s => document.querySelectorAll(s);
@@ -33,117 +28,39 @@ function toast(msg, type = 'success') {
   setTimeout(() => el.classList.remove('show'), 2500);
 }
 
-// ── Speech Recognition ──
-function initSpeech() {
-  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-  if (!SR) {
-    $('#record-status').textContent = '此瀏覽器不支援語音辨識';
-    return;
+// ── Text Input ──
+const noteInput = $('#note-input');
+const btnAdd = $('#btn-add-note');
+
+noteInput.addEventListener('input', () => {
+  btnAdd.disabled = !noteInput.value.trim();
+  noteInput.style.height = 'auto';
+  noteInput.style.height = Math.min(noteInput.scrollHeight, 150) + 'px';
+});
+
+noteInput.addEventListener('keydown', e => {
+  if (e.key === 'Enter' && !e.shiftKey) {
+    e.preventDefault();
+    submitNote();
   }
-  recognition = new SR();
-  recognition.lang = 'zh-TW';
-  recognition.interimResults = true;
-  recognition.continuous = true;
+});
 
-  recognition.onresult = e => {
-    let interim = '';
-    let final = '';
-    for (let i = 0; i < e.results.length; i++) {
-      if (e.results[i].isFinal) {
-        final += e.results[i][0].transcript;
-      } else {
-        interim += e.results[i][0].transcript;
-      }
-    }
-    currentTranscript = final || interim;
-    $('#record-status').textContent = currentTranscript || '聆聽中...';
-  };
+btnAdd.addEventListener('click', submitNote);
 
-  recognition.onerror = e => {
-    if (e.error === 'no-speech') return;
-    console.error('Speech error:', e.error);
-    stopRecording();
-  };
-
-  recognition.onend = () => {
-    if (isRecording) {
-      // Restarted by browser — save and stop
-      saveCurrentNote();
-    }
-  };
-}
-
-function startRecording() {
-  if (!recognition) return;
-  isRecording = true;
-  currentTranscript = '';
-  $('#record-btn').classList.add('recording');
-  $('#record-status').textContent = '聆聽中...';
-  try { recognition.start(); } catch {}
-}
-
-function stopRecording() {
-  if (!recognition) return;
-  isRecording = false;
-  $('#record-btn').classList.remove('recording');
-  try { recognition.stop(); } catch {}
-}
-
-async function saveCurrentNote() {
-  isRecording = false;
-  $('#record-btn').classList.remove('recording');
-  const text = currentTranscript.trim();
-  if (!text) {
-    $('#record-status').textContent = '未偵測到語音';
-    return;
-  }
+async function submitNote() {
+  const text = noteInput.value.trim();
+  if (!text) return;
   try {
     await addNote(text);
+    noteInput.value = '';
+    noteInput.style.height = 'auto';
+    btnAdd.disabled = true;
     toast('已儲存');
-    $('#record-status').textContent = '';
-    currentTranscript = '';
     loadTodayNotes();
-  } catch (err) {
+  } catch {
     toast('儲存失敗', 'error');
   }
 }
-
-// Press-and-hold for record button
-const recordBtn = $('#record-btn');
-let holdTimer = null;
-
-function onPointerDown(e) {
-  e.preventDefault();
-  startRecording();
-}
-
-function onPointerUp(e) {
-  e.preventDefault();
-  if (isRecording) {
-    isRecording = false; // prevent onend from double-saving
-    try { recognition.stop(); } catch {}
-    $('#record-btn').classList.remove('recording');
-    // Wait a moment for final results
-    setTimeout(() => {
-      const text = currentTranscript.trim();
-      if (text) {
-        addNote(text).then(() => {
-          toast('已儲存');
-          $('#record-status').textContent = '';
-          currentTranscript = '';
-          loadTodayNotes();
-        });
-      } else {
-        $('#record-status').textContent = '未偵測到語音';
-      }
-    }, 300);
-  }
-}
-
-recordBtn.addEventListener('pointerdown', onPointerDown);
-recordBtn.addEventListener('pointerup', onPointerUp);
-recordBtn.addEventListener('pointerleave', onPointerUp);
-recordBtn.addEventListener('pointercancel', onPointerUp);
 
 // ── Notes List ──
 function today() { return new Date().toISOString().slice(0, 10); }
@@ -152,7 +69,7 @@ async function loadTodayNotes() {
   const notes = await getNotesByDate(today());
   const container = $('#notes-list');
   if (!notes.length) {
-    container.innerHTML = '<div class="empty-state">今天還沒有語音筆記<br>按住麥克風按鈕開始錄音</div>';
+    container.innerHTML = '<div class="empty-state">今天還沒有筆記<br>在上方輸入框開始記錄</div>';
     return;
   }
   notes.sort((a, b) => b.timestamp.localeCompare(a.timestamp));
@@ -415,7 +332,6 @@ function startScheduler() {
 }
 
 // ── Init ──
-initSpeech();
 showPage('page-notes');
 startScheduler();
 loadSettings();
