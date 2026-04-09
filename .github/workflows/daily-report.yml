@@ -111,56 +111,54 @@ jobs:
           SUMMARY_FILE="data/summaries/${{ steps.date.outputs.date }}.md"
           DATE="${{ steps.date.outputs.date }}"
 
-          # Build email content
-          CONTENT=$(python3 -c "
-          import json
+          python3 << 'PYEOF'
+          import json, urllib.request, urllib.error, os
 
-          with open('$FILE') as f:
+          date = os.environ["DATE"]
+          notes_file = os.environ["FILE"]
+          summary_file = os.environ["SUMMARY_FILE"]
+
+          with open(notes_file) as f:
               notes = json.load(f)
 
-          summary = ''
+          summary = ""
           try:
-              with open('$SUMMARY_FILE') as f:
+              with open(summary_file) as f:
                   summary = f.read().strip()
-          except: pass
+          except:
+              pass
 
-          lines = []
-          lines.append('📋 隨手記日報（$DATE）')
-          lines.append('')
-
+          lines = [f"📋 隨手記日報（{date}）", ""]
           if summary:
-              lines.append('【AI 摘要】')
-              lines.append(summary)
-              lines.append('')
+              lines += ["【AI 摘要】", summary, ""]
+          lines.append("【原始記錄】")
+          for n in sorted(notes, key=lambda x: x["timestamp"]):
+              t = n["timestamp"][11:16]
+              lines.append(f"  {t}  {n['text']}")
 
-          lines.append('【原始記錄】')
-          for n in sorted(notes, key=lambda x: x['timestamp']):
-              t = n['timestamp'][11:16]
-              lines.append(f'  {t}  {n[\"text\"]}')
-
-          print('\n'.join(lines))
-          ")
-
-          # Send via EmailJS
-          python3 -c "
-          import json, urllib.request
+          content = "\n".join(lines)
 
           payload = json.dumps({
-              'service_id': '$EMAILJS_SERVICE_ID',
-              'template_id': '$EMAILJS_TEMPLATE_ID',
-              'user_id': '$EMAILJS_PUBLIC_KEY',
-              'template_params': {
-                  'to_email': '$USER_EMAIL',
-                  'subject': '隨手記日報 $DATE',
-                  'message': '''$CONTENT'''
+              "service_id": os.environ["EMAILJS_SERVICE_ID"],
+              "template_id": os.environ["EMAILJS_TEMPLATE_ID"],
+              "user_id": os.environ["EMAILJS_PUBLIC_KEY"],
+              "template_params": {
+                  "to_email": os.environ["USER_EMAIL"],
+                  "subject": f"隨手記日報 {date}",
+                  "message": content
               }
           }).encode()
 
           req = urllib.request.Request(
-              'https://api.emailjs.com/api/v1.0/email/send',
+              "https://api.emailjs.com/api/v1.0/email/send",
               data=payload,
-              headers={'Content-Type': 'application/json'}
+              headers={"Content-Type": "application/json"}
           )
-          resp = urllib.request.urlopen(req)
-          print(f'Email sent: {resp.status}')
-          "
+          try:
+              resp = urllib.request.urlopen(req)
+              print(f"Email sent: {resp.status}")
+          except urllib.error.HTTPError as e:
+              body = e.read().decode()
+              print(f"EmailJS error {e.code}: {body}")
+              raise
+          PYEOF
