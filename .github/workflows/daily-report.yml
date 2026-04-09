@@ -102,33 +102,32 @@ jobs:
       - name: Send daily email
         if: steps.check.outputs.has_notes == 'true'
         env:
-          EMAILJS_SERVICE_ID: ${{ secrets.EMAILJS_SERVICE_ID }}
-          EMAILJS_TEMPLATE_ID: ${{ secrets.EMAILJS_TEMPLATE_ID }}
-          EMAILJS_PUBLIC_KEY: ${{ secrets.EMAILJS_PUBLIC_KEY }}
           USER_EMAIL: ${{ secrets.USER_EMAIL }}
+          GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
           DATE: ${{ steps.date.outputs.date }}
         run: |
           export FILE="data/notes/${DATE}.json"
           export SUMMARY_FILE="data/summaries/${DATE}.md"
 
           python3 << 'PYEOF'
-          import json, urllib.request, urllib.error, os
+          import json, smtplib, os
+          from email.mime.text import MIMEText
 
           date = os.environ["DATE"]
-          notes_file = os.environ["FILE"]
-          summary_file = os.environ["SUMMARY_FILE"]
+          email = os.environ["USER_EMAIL"]
+          password = os.environ["GMAIL_APP_PASSWORD"]
 
-          with open(notes_file) as f:
+          with open(os.environ["FILE"]) as f:
               notes = json.load(f)
 
           summary = ""
           try:
-              with open(summary_file) as f:
+              with open(os.environ["SUMMARY_FILE"]) as f:
                   summary = f.read().strip()
           except:
               pass
 
-          lines = [f"📋 隨手記日報（{date}）", ""]
+          lines = [f"隨手記日報（{date}）", ""]
           if summary:
               lines += ["【AI 摘要】", summary, ""]
           lines.append("【原始記錄】")
@@ -138,27 +137,13 @@ jobs:
 
           content = "\n".join(lines)
 
-          payload = json.dumps({
-              "service_id": os.environ["EMAILJS_SERVICE_ID"],
-              "template_id": os.environ["EMAILJS_TEMPLATE_ID"],
-              "user_id": os.environ["EMAILJS_PUBLIC_KEY"],
-              "template_params": {
-                  "to_email": os.environ["USER_EMAIL"],
-                  "subject": f"隨手記日報 {date}",
-                  "message": content
-              }
-          }).encode()
+          msg = MIMEText(content, "plain", "utf-8")
+          msg["Subject"] = f"隨手記日報 {date}"
+          msg["From"] = email
+          msg["To"] = email
 
-          req = urllib.request.Request(
-              "https://api.emailjs.com/api/v1.0/email/send",
-              data=payload,
-              headers={"Content-Type": "application/json"}
-          )
-          try:
-              resp = urllib.request.urlopen(req)
-              print(f"Email sent: {resp.status}")
-          except urllib.error.HTTPError as e:
-              body = e.read().decode()
-              print(f"EmailJS error {e.code}: {body}")
-              raise
+          with smtplib.SMTP_SSL("smtp.gmail.com", 465) as s:
+              s.login(email, password)
+              s.send_message(msg)
+          print("Email sent successfully")
           PYEOF
