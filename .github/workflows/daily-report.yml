@@ -106,10 +106,10 @@ jobs:
           EMAILJS_TEMPLATE_ID: ${{ secrets.EMAILJS_TEMPLATE_ID }}
           EMAILJS_PUBLIC_KEY: ${{ secrets.EMAILJS_PUBLIC_KEY }}
           USER_EMAIL: ${{ secrets.USER_EMAIL }}
+          DATE: ${{ steps.date.outputs.date }}
         run: |
-          FILE="data/notes/${{ steps.date.outputs.date }}.json"
-          SUMMARY_FILE="data/summaries/${{ steps.date.outputs.date }}.md"
-          DATE="${{ steps.date.outputs.date }}"
+          export FILE="data/notes/${DATE}.json"
+          export SUMMARY_FILE="data/summaries/${DATE}.md"
 
           python3 << 'PYEOF'
           import json, urllib.request, urllib.error, os
