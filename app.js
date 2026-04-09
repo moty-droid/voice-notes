@@ -3,6 +3,9 @@ import {
   saveSummary, getSummary, getSummariesByRange
 } from './db.js';
 
+const REPO_OWNER = 'moty-droid';
+const REPO_NAME = 'voice-notes';
+
 // ── DOM ──
 const $ = s => document.querySelector(s);
 const $$ = s => document.querySelectorAll(s);
@@ -28,6 +31,56 @@ function toast(msg, type = 'success') {
   setTimeout(() => el.classList.remove('show'), 2500);
 }
 
+// ── GitHub Sync ──
+async function syncNoteToGitHub(note) {
+  const token = localStorage.getItem('github_token');
+  if (!token) return;
+
+  const path = `data/notes/${note.date}.json`;
+  const apiBase = `https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/contents/${path}`;
+  const headers = {
+    'Authorization': `token ${token}`,
+    'Content-Type': 'application/json'
+  };
+
+  try {
+    // Try to get existing file
+    let existing = [];
+    let sha = null;
+    try {
+      const res = await fetch(apiBase, { headers });
+      if (res.ok) {
+        const data = await res.json();
+        sha = data.sha;
+        existing = JSON.parse(atob(data.content));
+      }
+    } catch {}
+
+    // Append new note
+    existing.push({
+      text: note.text,
+      timestamp: note.timestamp
+    });
+
+    // Write back
+    const body = {
+      message: `note: ${note.date} ${note.timestamp.slice(11, 16)}`,
+      content: btoa(unescape(encodeURIComponent(JSON.stringify(existing, null, 2)))),
+    };
+    if (sha) body.sha = sha;
+
+    const putRes = await fetch(apiBase, {
+      method: 'PUT',
+      headers,
+      body: JSON.stringify(body)
+    });
+
+    if (!putRes.ok) throw new Error(`GitHub API ${putRes.status}`);
+  } catch (err) {
+    console.error('GitHub sync failed:', err);
+  }
+}
+
 // ── Text Input ──
 const noteInput = $('#note-input');
 const btnAdd = $('#btn-add-note');
@@ -51,12 +104,14 @@ async function submitNote() {
   const text = noteInput.value.trim();
   if (!text) return;
   try {
-    await addNote(text);
+    const note = await addNote(text);
     noteInput.value = '';
     noteInput.style.height = 'auto';
     btnAdd.disabled = true;
     toast('已儲存');
     loadTodayNotes();
+    // Sync to GitHub in background
+    syncNoteToGitHub(note);
   } catch {
     toast('儲存失敗', 'error');
   }
@@ -97,7 +152,6 @@ function escapeHtml(str) {
 // ── Summaries ──
 async function loadSummaries() {
   const container = $('#summary-list');
-  // Show last 7 days
   const dates = [];
   for (let i = 0; i < 7; i++) {
     const d = new Date();
@@ -117,7 +171,7 @@ async function loadSummaries() {
     if (summary) {
       html += `<div class="summary-card"><h3>AI 摘要</h3><div class="content">${escapeHtml(summary.text)}</div></div>`;
     } else if (notes.length) {
-      html += `<div class="summary-card" style="border-left-color:var(--text-dim)"><h3>尚未產生摘要</h3><div class="content" style="color:var(--text-dim)">等待午夜自動整理，或手動觸發</div></div>`;
+      html += `<div class="summary-card" style="border-left-color:var(--text-dim)"><h3>尚未產生摘要</h3><div class="content" style="color:var(--text-dim)">等待每日自動整理，或手動觸發</div></div>`;
     }
   }
 
@@ -129,6 +183,7 @@ async function loadSummaries() {
 
 // ── Settings ──
 function loadSettings() {
+  $('#input-github-token').value = localStorage.getItem('github_token') || '';
   $('#input-api-key').value = localStorage.getItem('claude_api_key') || '';
   $('#input-email').value = localStorage.getItem('user_email') || '';
   $('#input-emailjs-service').value = localStorage.getItem('emailjs_service_id') || '';
@@ -138,6 +193,7 @@ function loadSettings() {
 }
 
 $('#btn-save-settings').addEventListener('click', () => {
+  localStorage.setItem('github_token', $('#input-github-token').value.trim());
   localStorage.setItem('claude_api_key', $('#input-api-key').value.trim());
   localStorage.setItem('user_email', $('#input-email').value.trim());
   localStorage.setItem('emailjs_service_id', $('#input-emailjs-service').value.trim());
@@ -148,13 +204,15 @@ $('#btn-save-settings').addEventListener('click', () => {
 });
 
 function updateSchedulerStatus() {
+  const hasGH = !!localStorage.getItem('github_token');
   const hasKey = !!localStorage.getItem('claude_api_key');
   const hasEmail = !!localStorage.getItem('user_email');
   const hasEmailJS = !!localStorage.getItem('emailjs_service_id') && !!localStorage.getItem('emailjs_template_id') && !!localStorage.getItem('emailjs_public_key');
 
   $('#scheduler-status').innerHTML = `
+    <div><span class="dot ${hasGH ? 'on' : 'off'}"></span>筆記同步：${hasGH ? '已啟用' : '需要 GitHub Token'}</div>
     <div><span class="dot ${hasKey ? 'on' : 'off'}"></span>每日 AI 摘要：${hasKey ? '已啟用' : '需要 Claude API Key'}</div>
-    <div><span class="dot ${hasEmail && hasEmailJS ? 'on' : 'off'}"></span>每週 Email：${hasEmail && hasEmailJS ? '已啟用' : '需要完成 Email 設定'}</div>
+    <div><span class="dot ${hasEmail && hasEmailJS ? 'on' : 'off'}"></span>每日 Email：${hasEmail && hasEmailJS ? '已啟用' : '需要完成 Email 設定'}</div>
   `;
 }
 
@@ -188,7 +246,7 @@ async function generateDailySummary(dateStr) {
         max_tokens: 1024,
         messages: [{
           role: 'user',
-          content: `以下是我今天（${dateStr}）的語音筆記記錄，請幫我整理成條列式摘要，用繁體中文。重點歸納，去除口語贅字，保留關鍵資訊。\n\n${notesText}`
+          content: `以下是我今天（${dateStr}）的筆記記錄，請幫我整理成條列式摘要，用繁體中文。重點歸納，去除口語贅字，保留關鍵資訊。\n\n${notesText}`
         }]
       })
     });
@@ -219,53 +277,32 @@ $('#btn-generate-summary').addEventListener('click', async () => {
   }
 });
 
-// ── EmailJS (Weekly Report) ──
-async function sendWeeklyEmail() {
+// ── EmailJS (Daily Report) ──
+async function sendDailyEmail(dateStr) {
   const email = localStorage.getItem('user_email');
   const serviceId = localStorage.getItem('emailjs_service_id');
   const templateId = localStorage.getItem('emailjs_template_id');
   const publicKey = localStorage.getItem('emailjs_public_key');
   if (!email || !serviceId || !templateId || !publicKey) return;
 
-  // Get last 7 days
-  const endDate = today();
-  const startD = new Date();
-  startD.setDate(startD.getDate() - 6);
-  const startDate = startD.toISOString().slice(0, 10);
-
-  const notes = await getNotesByDateRange(startDate, endDate);
-  const summaries = await getSummariesByRange(startDate, endDate);
+  const notes = await getNotesByDate(dateStr);
+  const summary = await getSummary(dateStr);
 
   if (!notes.length) return;
 
-  // Build email content
-  let content = `📋 語音筆記週報（${startDate} ~ ${endDate}）\n\n`;
+  let content = `📋 隨手記日報（${dateStr}）\n\n`;
 
-  // Group notes by date
-  const byDate = {};
-  notes.forEach(n => {
-    if (!byDate[n.date]) byDate[n.date] = [];
-    byDate[n.date].push(n);
-  });
-
-  const summaryMap = {};
-  summaries.forEach(s => summaryMap[s.date] = s.text);
-
-  const dates = Object.keys(byDate).sort();
-  for (const d of dates) {
-    content += `── ${d} ──\n`;
-    if (summaryMap[d]) {
-      content += `【AI 摘要】\n${summaryMap[d]}\n\n`;
-    }
-    content += `【原始記錄】\n`;
-    byDate[d]
-      .sort((a, b) => a.timestamp.localeCompare(b.timestamp))
-      .forEach(n => {
-        const t = new Date(n.timestamp).toLocaleTimeString('zh-TW', { hour: '2-digit', minute: '2-digit' });
-        content += `  ${t}  ${n.text}\n`;
-      });
-    content += '\n';
+  if (summary) {
+    content += `【AI 摘要】\n${summary.text}\n\n`;
   }
+
+  content += `【原始記錄】\n`;
+  notes
+    .sort((a, b) => a.timestamp.localeCompare(b.timestamp))
+    .forEach(n => {
+      const t = new Date(n.timestamp).toLocaleTimeString('zh-TW', { hour: '2-digit', minute: '2-digit' });
+      content += `  ${t}  ${n.text}\n`;
+    });
 
   try {
     const res = await fetch('https://api.emailjs.com/api/v1.0/email/send', {
@@ -277,14 +314,13 @@ async function sendWeeklyEmail() {
         user_id: publicKey,
         template_params: {
           to_email: email,
-          subject: `語音筆記週報 ${startDate} ~ ${endDate}`,
+          subject: `隨手記日報 ${dateStr}`,
           message: content
         }
       })
     });
     if (res.ok) {
-      toast('週報已寄出');
-      localStorage.setItem('last_weekly_email', new Date().toISOString());
+      toast('日報已寄出');
     } else {
       throw new Error(`EmailJS ${res.status}`);
     }
@@ -298,13 +334,12 @@ $('#btn-send-email').addEventListener('click', async () => {
   const email = localStorage.getItem('user_email');
   const serviceId = localStorage.getItem('emailjs_service_id');
   if (!email || !serviceId) { toast('請先完成 Email 設定', 'error'); return; }
-  toast('正在寄送週報...');
-  await sendWeeklyEmail();
+  toast('正在寄送日報...');
+  await sendDailyEmail(today());
 });
 
-// ── Scheduler (runs while app is open) ──
+// ── Scheduler (runs while app is open, backup for GitHub Actions) ──
 function startScheduler() {
-  // Check every minute
   setInterval(async () => {
     const now = new Date();
 
@@ -319,15 +354,6 @@ function startScheduler() {
         localStorage.setItem('last_summary_date', yStr);
       }
     }
-
-    // Weekly email on Monday 08:00 ~ 08:05
-    if (now.getDay() === 1 && now.getHours() === 8 && now.getMinutes() < 5) {
-      const lastEmail = localStorage.getItem('last_weekly_email');
-      const thisWeek = today();
-      if (!lastEmail || lastEmail.slice(0, 10) !== thisWeek) {
-        await sendWeeklyEmail();
-      }
-    }
   }, 60_000);
 }
 
@@ -336,7 +362,6 @@ showPage('page-notes');
 startScheduler();
 loadSettings();
 
-// Register service worker
 if ('serviceWorker' in navigator) {
   navigator.serviceWorker.register('./sw.js');
 }

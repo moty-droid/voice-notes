@@ -36,7 +36,7 @@
   <h1>AI 摘要</h1>
   <div class="btn-row" style="margin-bottom: 16px;">
     <button id="btn-generate-summary" class="btn btn-primary">產生今日摘要</button>
-    <button id="btn-send-email" class="btn btn-secondary">寄送週報</button>
+    <button id="btn-send-email" class="btn btn-secondary">寄送日報</button>
   </div>
   <div id="summary-list"></div>
 </div>
@@ -48,6 +48,12 @@
   <div id="scheduler-status" class="scheduler-status"></div>
 
   <div class="setting-group">
+    <label for="input-github-token">GitHub Token</label>
+    <input id="input-github-token" type="password" placeholder="ghp_...">
+    <div class="hint">用於同步筆記到 GitHub。到 github.com/settings/tokens 建立，勾選 repo 權限</div>
+  </div>
+
+  <div class="setting-group">
     <label for="input-api-key">Claude API Key</label>
     <input id="input-api-key" type="password" placeholder="sk-ant-...">
     <div class="hint">用於產生每日 AI 摘要。取得方式：console.anthropic.com</div>
@@ -56,7 +62,7 @@
   <div class="setting-group">
     <label for="input-email">Email 地址</label>
     <input id="input-email" type="email" placeholder="you@example.com">
-    <div class="hint">每週一早上 8 點自動寄送週報到此信箱</div>
+    <div class="hint">每天早上自動寄送日報到此信箱</div>
 
     <label for="input-emailjs-service" style="margin-top:14px">EmailJS Service ID</label>
     <input id="input-emailjs-service" type="text" placeholder="service_xxxxxx">
