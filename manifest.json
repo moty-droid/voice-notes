@@ -1,11 +1,11 @@
 {
-  "name": "語音筆記",
-  "short_name": "語音筆記",
-  "description": "語音筆記 PWA - 按住錄音，AI 自動整理",
+  "name": "隨手記",
+  "short_name": "隨手記",
+  "description": "隨手記 PWA - 快速筆記，AI 自動整理",
   "start_url": "./index.html",
   "display": "standalone",
-  "background_color": "#1a1a2e",
-  "theme_color": "#1a1a2e",
+  "background_color": "#0c0c14",
+  "theme_color": "#0c0c14",
   "lang": "zh-TW",
   "icons": [
     {
